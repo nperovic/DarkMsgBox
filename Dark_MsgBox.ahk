@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.1-alpha.9
 
+; for v2.1.alpha.9 users 
 class RECT  {
     left  : i32
     top   : i32
@@ -18,15 +19,6 @@ class __MsgBox
         MsgBoxEx(args*)
         {
             static WM_COMMNOTIFY := 0x44
-            winTitle := Format("{1} ahk_class #32770", title?)
-            static textHwnd := 0
-            static btnHwnd  := 0
-
-            WM_COMMAND    := 0x0111
-            WM_COMMNOTIFY := 0x44
-            WM_USER       := 0x0400
-            WM_INITDIALOG := 0x0110
-            WM_APPCOMMAND := 0x0319
 
             OnMessage(WM_COMMNOTIFY, ON_WM_COMMNOTIFY, -1)
             DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
@@ -36,38 +28,39 @@ class __MsgBox
             ON_WM_COMMNOTIFY(wParam, lParam, msg, hwnd)
             {
                 DetectHiddenWindows(true)
-                DetectHiddenText(true)
 
                 if msg != 68 || wParam != 1027
                     return
 
-                EnumThreadWindows(GetCurrentThreadId(), 
-                    CallbackCreate((hwnd, *) {
-                        static WS_EX_COMPOSITED := 0x02000000
-                        Critical()
-                        SetWinDelay(-1)
-                        SetControlDelay(-1)
-                        DetectHiddenWindows(1)
-                        DetectHiddenText(1)
+                EnumThreadWindows(GetCurrentThreadId(), CallbackCreate(WNDENUMPROC), 0)
 
-                        if !WinExist("ahk_class #32770 ahk_id" hwnd) 
-                            return 1
+                WNDENUMPROC(hwnd, *)
+                {
+                    static WS_EX_COMPOSITED := 0x02000000
 
-                        OnMessage(0x44, ON_WM_COMMNOTIFY, 0)
-                        WinSetExStyle("+" WS_EX_COMPOSITED)
+                    Critical()
+                    SetWinDelay(-1)
+                    SetControlDelay(-1)
+                    DetectHiddenWindows(true)
 
-                        DwmSetWindowAttribute(hwnd, 2, 2)
-                        DwmSetWindowAttribute(hwnd, 4, 0)
-                        DwmSetWindowAttribute(hwnd, 10, 1)
-                        DwmSetWindowAttribute(hwnd, 17, 1)
-                        DwmSetWindowAttribute(hwnd, 20, true)
-                        DwmSetWindowAttribute(hwnd, 38, 2)
-                        DwmSetWindowAttribute(hwnd, 34, 0xFFFFFFFE)
-                        DwmSetWindowAttribute(hwnd, 35, 0x2b2b2b)
+                    if !WinExist("ahk_class #32770 ahk_id" hwnd) 
+                        return 1
 
-                        GWL_WNDPROC(hwnd)
-                        return 0
-                }), 0)
+                    OnMessage(0x44, ON_WM_COMMNOTIFY, 0)
+                    WinSetExStyle("+" WS_EX_COMPOSITED)
+
+                    DwmSetWindowAttribute(hwnd, 2, 2)
+                    DwmSetWindowAttribute(hwnd, 4, 0)
+                    DwmSetWindowAttribute(hwnd, 10, 1)
+                    DwmSetWindowAttribute(hwnd, 17, 1)
+                    DwmSetWindowAttribute(hwnd, 20, true)
+                    DwmSetWindowAttribute(hwnd, 38, 2)
+                    DwmSetWindowAttribute(hwnd, 34, 0xFFFFFFFE)
+                    DwmSetWindowAttribute(hwnd, 35, 0x2b2b2b)
+
+                    GWL_WNDPROC(hwnd)
+                    return 0
+                }
             }
         }
 
@@ -211,7 +204,6 @@ class __MsgBox
     }
 }
 
-/* Example
-
+/* Example:
 MsgBox("hello world", "TITLE")
 ExitApp()
