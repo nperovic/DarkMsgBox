@@ -1,12 +1,47 @@
-#Requires AutoHotkey v2.1-alpha.9
+/************************************************************************
+ * @description Apply dark theme to the built-in MsgBox.
+ * @file Dark_MsgBox.ahk
+ * @link https://gist.github.com/nperovic/0b9a511eda773f9304813a6ad9eec137
+ * @author Nikola Perovic
+ * @date 2024/04/19
+ * @version 1.0.0
+ ***********************************************************************/
 
-; for v2.1.alpha.9 users 
+#Requires AutoHotkey v2.1-alpha.9
+#DllLoad gdi32.dll
+
+; for v2.1.alpha.9 or later 
 class RECT  {
     left  : i32
     top   : i32
     right : i32
     bottom: i32
 }
+
+
+/* 
+; for v2.0.12 or later
+class RECT extends Buffer {
+    static ofst := Map("left", 0, "top", 4, "right", 8, "bottom", 12)
+
+    __New(left := 0, top := 0, right := 0, bottom := 0) {
+        super.__New(16)
+        NumPut("int", left, "int", top, "int", right, "int", bottom, this)
+    }
+
+    __Set(Key, Params, Value) {
+        if RECT.ofst.Has(k := StrLower(key))
+            NumPut("int", value, this, RECT.ofst[k])
+        else throw PropertyError
+    }
+
+    __Get(Key, Params) {
+        if RECT.ofst.Has(k := StrLower(key))
+            return NumGet(this, RECT.ofst[k], "int")
+        throw PropertyError
+    }
+}
+*/
 
 class __MsgBox
 {
@@ -37,6 +72,7 @@ class __MsgBox
                 WNDENUMPROC(hwnd, *)
                 {
                     static WS_EX_COMPOSITED := 0x02000000
+                    static winAttrMap       := Map(2, 2, 4, 0, 10, true, 17, true, 20, true, 38, 2, 34, 0xFFFFFFFE, 35, 0x2b2b2b)
 
                     Critical()
                     SetWinDelay(-1)
@@ -49,14 +85,8 @@ class __MsgBox
                     OnMessage(0x44, ON_WM_COMMNOTIFY, 0)
                     WinSetExStyle("+" WS_EX_COMPOSITED)
 
-                    DwmSetWindowAttribute(hwnd, 2, 2)
-                    DwmSetWindowAttribute(hwnd, 4, 0)
-                    DwmSetWindowAttribute(hwnd, 10, 1)
-                    DwmSetWindowAttribute(hwnd, 17, 1)
-                    DwmSetWindowAttribute(hwnd, 20, true)
-                    DwmSetWindowAttribute(hwnd, 38, 2)
-                    DwmSetWindowAttribute(hwnd, 34, 0xFFFFFFFE)
-                    DwmSetWindowAttribute(hwnd, 35, 0x2b2b2b)
+                    for dwAttribute, pvAttribute in winAttrMap
+                        DwmSetWindowAttribute(hwnd, dwAttribute, pvAttribute)
 
                     GWL_WNDPROC(hwnd)
                     return 0
@@ -64,146 +94,135 @@ class __MsgBox
             }
         }
 
-        GWL_WNDPROC(_WinTitle:= "", btnHwnd?)
+        GWL_WNDPROC(winId := "", btnHwnd?)
         {
-            static SetWindowLong        := DllCall.Bind(A_PtrSize = 8 ? "SetWindowLongPtr" : "SetWindowLong", "ptr",, "int",, "ptr",, "ptr")
-            static WM_CTLCOLORBTN       := 0x0135
-            static WM_CTLCOLORDLG       := 0x0136
-            static WM_CTLCOLORSTATIC    := 0x0138
-            static WM_CLOSE             := 0x0010
-            static WM_DESTROY           := 0x0002
-            static WM_PAINT             := 0x000F
+            static SetWindowLong     := DllCall.Bind(A_PtrSize = 8 ? "SetWindowLongPtr" : "SetWindowLong", "ptr",, "int",, "ptr",, "ptr")
+            static WM_CTLCOLORBTN    := 0x0135
+            static WM_CTLCOLORDLG    := 0x0136
+            static WM_CTLCOLORSTATIC := 0x0138
+            static WM_CLOSE          := 0x0010
+            static WM_DESTROY        := 0x0002
+            static WM_SETREDRAW      := 0x000B
+            static BS_FLAT           := 0x8000
+            static BS_BITMAP         := 0x0080
 
-            DetectHiddenWindows(1)
-            winId := WinExist(_WinTitle)
-            
+            DetectHiddenWindows(true)
+            SetControlDelay(-1)
             DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+
+            btns := []
 
             for ctrl in WinGetControlsHwnd(winId) {
                 SetWindowTheme(ctrl, "DarkMode_Explorer")
                 if InStr(ControlGetClassNN(ctrl), "Button") {
-                    ControlSetStyle("+0x4000000" , ctrl)
-                    btnHwnd := ctrl
+                    ControlSetStyle("+" (BS_FLAT | BS_BITMAP), ctrl)
+                    btns.Push(btnHwnd := ctrl)
                 }
             }
 
             WindowProcNew := CallbackCreate(WNDPROC)
-            WindowProcOld := SetWindowLong(_WinTitle, -4, WindowProcNew)
+            WindowProcOld := SetWindowLong(winId, -4, WindowProcNew)
+
+            hbrush1 := ""
+            hbrush2 := ""
             
-            SetWindowLongPtrW(hWnd, nIndex, dwNewLong) => DllCall("SetWindowLongPtrW", "ptr", hWnd, "int", nIndex, "ptr", dwNewLong, "ptr")
-
-            dc       := ""
-            brush    := ""
-            DC_BRUSH := ""
-
             WNDPROC(hwnd, uMsg, wParam, lParam)
             {
-                Critical(-1)
-                DetectHiddenWindows(1)
-                DetectHiddenText(1)
+                Critical()
+                DetectHiddenWindows(true)
+                SetControlDelay(-1)
                 
+                if !hbrush1 
+                    hbrush1 := CreateSolidBrush(0x202020)
+
+                if !hbrush2
+                    hbrush2 := CreateSolidBrush(0x2b2b2b)
+
                 switch uMsg {
                 case WM_CTLCOLORSTATIC: 
                 {
-                    if !DC_BRUSH
-                        DC_BRUSH := DllCall("CreateSolidBrush", "UInt", 0x2b2b2b)
-
-                    SelectObject(wParam, DC_BRUSH)
-                    SetBkMode(wParam, 1)
+                    SelectObject(wParam, hbrush2)
+                    SetBkMode(wParam, 0)
                     SetTextColor(wParam, 0xFFFFFF)
                     SetBkColor(wParam, 0x2b2b2b)
-                    return DC_BRUSH
+
+                    for _hwnd in btns
+                        PostMessage(WM_SETREDRAW,,,_hwnd)
+
+                    GetClientRect(winId, rcW := RECT())
+                    GetClientRect(btnHwnd, rcBtn := RECT())
+
+                    btnHeight  := rcBtn.Bottom - rcBtn.Top
+                    rcW.Top    := rcW.Bottom - btnHeight
+                    rcW.Right  += 10
+                    rcW.Bottom += (btnHeight * 1.5)
+                    hdc        := GetWindowDC(winId)
+
+                    SetBkMode(hdc, 0)
+                    FillRect(hdc, rcW, hbrush1)
+                    ReleaseDC(winId, hdc)
+
+                    for _hwnd in btns
+                        PostMessage(WM_SETREDRAW, 1,,_hwnd)
+
+                    return hbrush2
+                }
+                case WM_CTLCOLORDLG: 
+                {         
+                    SelectObject(wParam, hbrush2)
+                    SetBkMode(wParam, 0)
+                    SetTextColor(wParam, 0xFFFFFF)
+                    SetBkColor(wParam, 0x2b2b2b)
+                    return hbrush2
                 }
                 case WM_CTLCOLORBTN: 
                 {
-                    if !brush
-                        brush := CreateSolidBrush(0x202020)
-                    SelectObject(wParam, brush)
-                    SetBkMode(wParam, 1)
+                    SelectObject(wParam, hbrush1)
+                    SetBkMode(wParam, 0)
                     SetTextColor(wParam, 0xFFFFFF)
-                    SetBkColor(wParam, 0x2b2b2b)
-                    return DC_BRUSH
-                }
-                case WM_CTLCOLORDLG: 
-                {
-                    if !brush
-                        brush := CreateSolidBrush(0x202020)
-
-                    if !DC_BRUSH
-                        DC_BRUSH := DllCall("CreateSolidBrush", "UInt", 0x2b2b2b)
-
-                    dc := GetWindowDC(_WinTitle)
-                    GetClientRect(_WinTitle, rcW := RECT())
-                    GetClientRect(btnHwnd, rcBtn := RECT())
-
-                    height        := (rcBtn.Bottom-rcBtn.Top)
-                    rcFill        := RECT()
-                    rcFill.Top    := rcW.Bottom-height
-                    rcFill.Left   := rcW.Left
-                    rcFill.Right  := rcW.Right+10
-                    rcFill.Bottom := rcW.Bottom+100
-
-                    FillRect(dc, rcFill, brush)
-                    ReleaseDC(_WinTitle, dc)
-
-                    return DC_BRUSH
+                    SetBkColor(wParam, 0x202020)
+                    return hbrush2
                 }
                 case WM_CLOSE, WM_DESTROY: 
                 {
-                    if DC_BRUSH {
-                        DeleteObject(DC_BRUSH)
-                        DC_BRUSH := ""
-                    }
-                    if brush {
-                        DeleteObject(brush)
-                        brush := ""
-                    }
+                    for v in [hbrush1, hbrush2]
+                        if v
+                            DeleteObject(v)
                 }}
-                
+
                 return CallWindowProc(WindowProcOld, hwnd, uMsg, wParam, lParam) 
             }
         }
 
-        SetTextColor(hdc, crColor) => DllCall('Gdi32\SetTextColor', 'ptr', hdc, 'uint', crColor, 'uint')
-
-        SetBkMode(hdc, iBkMode) => DllCall('Gdi32\SetBkMode', 'ptr', hdc, 'int', iBkMode, 'int')
-
-        SelectObject(hdc, hgdiobj) => DllCall('Gdi32\SelectObject', 'ptr', hdc, 'ptr', hgdiobj, 'ptr')
-
-        SetBkColor(hdc, crColor) => DllCall('Gdi32\SetBkColor', 'ptr', hdc, 'uint', crColor, 'uint')
-
-        CreateSolidBrush(crColor) => DllCall('Gdi32\CreateSolidBrush', 'uint', crColor, 'ptr')
-
-        GetWindowDC(hwnd) => DllCall("User32\GetWindowDC", "ptr", hwnd, "ptr")
-
-        GetClientRect(hWnd, lpRect) => DllCall("User32\GetClientRect", "ptr", hWnd, "ptr", lpRect, "int")
-
-        ReleaseDC(hWnd, hDC) => DllCall("User32\ReleaseDC", "ptr", hWnd, "ptr", hDC, "int")
-
-        FillRect(hDC, lprc, hbr) => DllCall("User32\FillRect", "ptr", hDC, "ptr", lprc, "ptr", hbr, "int")
-
-        EnumThreadWindows(dwThreadId, lpfn, lParam) => DllCall("User32\EnumThreadWindows", "uint", dwThreadId, "ptr", lpfn, "uptr", lParam, "int")
-
-        GetCurrentThreadId() => DllCall("Kernel32\GetCurrentThreadId", "uint")
-
-        SetWindowTheme(hwnd, pszSubAppName, pszSubIdList := "") => (!DllCall("uxtheme\SetWindowTheme"
-				, "ptr", hwnd
-				, "ptr", StrPtr(pszSubAppName)
-				, "ptr", pszSubIdList ? StrPtr(pszSubIdList) : 0) ? true : false)
-
         CallWindowProc(lpPrevWndFunc, hWnd, uMsg, wParam, lParam) => DllCall("CallWindowProc", "Ptr", lpPrevWndFunc, "Ptr", hwnd, "UInt", uMsg, "Ptr", wParam, "Ptr", lParam)
 
+        CreateSolidBrush(crColor) => DllCall('Gdi32\CreateSolidBrush', 'uint', crColor, 'ptr')
+        
+        /** @see — https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute */
+        DWMSetWindowAttribute(hwnd, dwAttribute, pvAttribute, cbAttribute := 4) => DllCall("Dwmapi\DwmSetWindowAttribute", "Ptr" , hwnd, "UInt", dwAttribute, "Ptr*", &pvAttribute, "UInt", cbAttribute)
+        
         DeleteObject(hObject) => DllCall('Gdi32\DeleteObject', 'ptr', hObject, 'int')
-
-        DWMSetWindowAttribute(hwnd, dwAttribute, pvAttribute, cbAttribute := 4) => 
-            DllCall("Dwmapi\DwmSetWindowAttribute"
-                , "Ptr" , hwnd
-                , "UInt", dwAttribute
-                , "Ptr*", &pvAttribute
-                , "UInt", cbAttribute)
+        
+        EnumThreadWindows(dwThreadId, lpfn, lParam) => DllCall("User32\EnumThreadWindows", "uint", dwThreadId, "ptr", lpfn, "uptr", lParam, "int")
+        
+        FillRect(hDC, lprc, hbr) => DllCall("User32\FillRect", "ptr", hDC, "ptr", lprc, "ptr", hbr, "int")
+        
+        GetClientRect(hWnd, lpRect) => DllCall("User32\GetClientRect", "ptr", hWnd, "ptr", lpRect, "int")
+        
+        GetCurrentThreadId() => DllCall("Kernel32\GetCurrentThreadId", "uint")
+        
+        GetWindowDC(hwnd) => DllCall("User32\GetWindowDC", "ptr", hwnd, "ptr")
+        
+        ReleaseDC(hWnd, hDC) => DllCall("User32\ReleaseDC", "ptr", hWnd, "ptr", hDC, "int")
+        
+        SelectObject(hdc, hgdiobj) => DllCall('Gdi32\SelectObject', 'ptr', hdc, 'ptr', hgdiobj, 'ptr')
+        
+        SetBkColor(hdc, crColor) => DllCall('Gdi32\SetBkColor', 'ptr', hdc, 'uint', crColor, 'uint')
+        
+        SetBkMode(hdc, iBkMode) => DllCall('Gdi32\SetBkMode', 'ptr', hdc, 'int', iBkMode, 'int')
+        
+        SetTextColor(hdc, crColor) => DllCall('Gdi32\SetTextColor', 'ptr', hdc, 'uint', crColor, 'uint')
+        
+        SetWindowTheme(hwnd, pszSubAppName, pszSubIdList := "") => (!DllCall("uxtheme\SetWindowTheme", "ptr", hwnd, "ptr", StrPtr(pszSubAppName), "ptr", pszSubIdList ? StrPtr(pszSubIdList) : 0) ? true : false)
     }
 }
-
-/* Example:
-MsgBox("hello world", "TITLE")
-ExitApp()
