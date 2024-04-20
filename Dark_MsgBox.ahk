@@ -3,8 +3,8 @@
  * @file Dark_MsgBox.ahk
  * @link https://gist.github.com/nperovic/0b9a511eda773f9304813a6ad9eec137
  * @author Nikola Perovic
- * @date 2024/04/19
- * @version 1.0.0
+ * @date 2024/04/20
+ * @version 1.0.1
  ***********************************************************************/
 
 #Requires AutoHotkey v2.1-alpha.9
@@ -51,14 +51,14 @@ class __MsgBox
         nativeMsgbox := MsgBox.Call.Bind(MsgBox)
         MsgBox.DefineProp("Call", {Call: (dropThis, args*) => MsgBoxEx(args*)})
 
-        MsgBoxEx(args*)
+        MsgBoxEx(text?, title?, options?, iconFile := "", iconNumber := 1)
         {
             static WM_COMMNOTIFY := 0x44
 
             OnMessage(WM_COMMNOTIFY, ON_WM_COMMNOTIFY, -1)
             DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
 
-            return nativeMsgbox(args*)
+            return nativeMsgbox(text?, title?, options?)
             
             ON_WM_COMMNOTIFY(wParam, lParam, msg, hwnd)
             {
@@ -71,8 +71,13 @@ class __MsgBox
 
                 WNDENUMPROC(hwnd, *)
                 {
+                    static SM_CICON         := "W" SysGet(11) " H" SysGet(12)
+                    static SM_CSMICON       := "W" SysGet(49) " H" SysGet(50)
+                    static ICON_BIG         := 1
+                    static ICON_SMALL       := 0
+                    static WM_SETICON       := 0x80
                     static WS_EX_COMPOSITED := 0x02000000
-                    static winAttrMap       := Map(2, 2, 4, 0, 10, true, 17, true, 20, true, 38, 2, 34, 0xFFFFFFFE, 35, 0x2b2b2b)
+                    static winAttrMap       := Map(2, 2, 4, 0, 10, true, 17, true, 20, true, 38, 2, 35, 0x2b2b2b) ; 34, 0xFFFFFFFE,
 
                     Critical()
                     SetWinDelay(-1)
@@ -84,17 +89,24 @@ class __MsgBox
 
                     OnMessage(0x44, ON_WM_COMMNOTIFY, 0)
                     WinSetExStyle("+" WS_EX_COMPOSITED)
+                
+                    if iconFile {
+                        hICON_SMALL := LoadPicture(iconFile, SM_CSMICON " GDI+ Icon" iconNumber, &handleType)
+                        PostMessage(WM_SETICON, ICON_SMALL, hICON_SMALL)
+                        hICON_BIG := LoadPicture(iconFile, SM_CICON " GDI+ Icon" iconNumber, &handleType)
+                        PostMessage(WM_SETICON, ICON_BIG, hICON_BIG)
+                    }
 
                     for dwAttribute, pvAttribute in winAttrMap
                         DwmSetWindowAttribute(hwnd, dwAttribute, pvAttribute)
 
-                    GWL_WNDPROC(hwnd)
+                    GWL_WNDPROC(hwnd, hICON_SMALL, hICON_BIG)
                     return 0
                 }
             }
         }
 
-        GWL_WNDPROC(winId := "", btnHwnd?)
+        GWL_WNDPROC(winId := "", btnHwnd?, hIcons*)
         {
             static SetWindowLong     := DllCall.Bind(A_PtrSize = 8 ? "SetWindowLongPtr" : "SetWindowLong", "ptr",, "int",, "ptr",, "ptr")
             static WM_CTLCOLORBTN    := 0x0135
@@ -105,12 +117,14 @@ class __MsgBox
             static WM_SETREDRAW      := 0x000B
             static BS_FLAT           := 0x8000
             static BS_BITMAP         := 0x0080
-
+            static DPI               := (A_ScreenDPI / 96)
+            
             DetectHiddenWindows(true)
             SetControlDelay(-1)
             DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
 
-            btns := []
+            btnHwnd := ""
+            btns    := []
 
             for ctrl in WinGetControlsHwnd(winId) {
                 SetWindowTheme(ctrl, "DarkMode_Explorer")
@@ -151,11 +165,11 @@ class __MsgBox
 
                     GetClientRect(winId, rcW := RECT())
                     GetClientRect(btnHwnd, rcBtn := RECT())
-
-                    btnHeight  := rcBtn.Bottom - rcBtn.Top
+    
+                    btnHeight  := (rcBtn.Bottom - rcBtn.Top) / DPI
                     rcW.Top    := rcW.Bottom - btnHeight
-                    rcW.Right  += 10
-                    rcW.Bottom += (btnHeight * 1.5)
+                    rcW.Right  *= 3
+                    rcW.Bottom *= 3
                     hdc        := GetWindowDC(winId)
 
                     SetBkMode(hdc, 0)
@@ -188,6 +202,9 @@ class __MsgBox
                     for v in [hbrush1, hbrush2]
                         if v
                             DeleteObject(v)
+
+                    for hIcon in hIcons
+                        DllCall("DestroyIcon", "ptr", hIcon)
                 }}
 
                 return CallWindowProc(WindowProcOld, hwnd, uMsg, wParam, lParam) 
