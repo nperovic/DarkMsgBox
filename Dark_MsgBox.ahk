@@ -47,16 +47,16 @@ class __MsgBox
 {
     static __New()
     {
-        /** Thanks to geekdude & Mr Doge for providing this method to rewrite built-in functions. */
-        nativeMsgbox := MsgBox.Call.Bind(MsgBox)
-        MsgBox.DefineProp("Call", {Call: (dropThis, args*) => MsgBoxEx(args*)})
-
-        MsgBoxEx(text?, title?, options?, iconFile := "", iconNumber := 1)
+          /** Thanks to geekdude & Mr Doge for providing this method to rewrite built-in functions. */
+        static nativeMsgbox := MsgBox.Call.Bind(MsgBox)
+        MsgBox.DefineProp("Call", {Call: MsgBoxEx})
+        
+        MsgBoxEx(_this, text?, title?, options?, iconFile := "", iconNumber := 1)
         {
             static WM_COMMNOTIFY := 0x44
-
+            
+            SetThreadDpiAwarenessContext(-4)
             OnMessage(WM_COMMNOTIFY, ON_WM_COMMNOTIFY, -1)
-            DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
 
             return nativeMsgbox(text?, title?, options?)
             
@@ -64,150 +64,151 @@ class __MsgBox
             {
                 DetectHiddenWindows(true)
 
-                if msg != 68 || wParam != 1027
-                    return
-
-                EnumThreadWindows(GetCurrentThreadId(), CallbackCreate(WNDENUMPROC), 0)
-
-                WNDENUMPROC(hwnd, *)
-                {
-                    static SM_CICON         := "W" SysGet(11) " H" SysGet(12)
-                    static SM_CSMICON       := "W" SysGet(49) " H" SysGet(50)
-                    static ICON_BIG         := 1
-                    static ICON_SMALL       := 0
-                    static WM_SETICON       := 0x80
-                    static WS_EX_COMPOSITED := 0x02000000
-                    static winAttrMap       := Map(2, 2, 4, 0, 10, true, 17, true, 20, true, 38, 2, 35, 0x2b2b2b) ; 34, 0xFFFFFFFE,
-
-                    Critical()
-                    SetWinDelay(-1)
-                    SetControlDelay(-1)
-                    DetectHiddenWindows(true)
-
-                    if !WinExist("ahk_class #32770 ahk_id" hwnd) 
-                        return 1
-
-                    OnMessage(0x44, ON_WM_COMMNOTIFY, 0)
-                    WinSetExStyle("+" WS_EX_COMPOSITED)
-                
-                    if iconFile {
-                        hICON_SMALL := LoadPicture(iconFile, SM_CSMICON " GDI+ Icon" iconNumber, &handleType)
-                        PostMessage(WM_SETICON, ICON_SMALL, hICON_SMALL)
-                        hICON_BIG := LoadPicture(iconFile, SM_CICON " GDI+ Icon" iconNumber, &handleType)
-                        PostMessage(WM_SETICON, ICON_BIG, hICON_BIG)
-                    }
-
-                    for dwAttribute, pvAttribute in winAttrMap
-                        DwmSetWindowAttribute(hwnd, dwAttribute, pvAttribute)
-
-                    GWL_WNDPROC(hwnd, hICON_SMALL, hICON_BIG)
-                    return 0
-                }
+                if (msg = 68 && wParam = 1027)
+                    EnumThreadWindows(GetCurrentThreadId(), CallbackCreate(WNDENUMPROC), 0)
             }
-        }
 
-        GWL_WNDPROC(winId := "", btnHwnd?, hIcons*)
-        {
-            static SetWindowLong     := DllCall.Bind(A_PtrSize = 8 ? "SetWindowLongPtr" : "SetWindowLong", "ptr",, "int",, "ptr",, "ptr")
-            static WM_CTLCOLORBTN    := 0x0135
-            static WM_CTLCOLORDLG    := 0x0136
-            static WM_CTLCOLORSTATIC := 0x0138
-            static WM_CLOSE          := 0x0010
-            static WM_DESTROY        := 0x0002
-            static WM_SETREDRAW      := 0x000B
-            static BS_FLAT           := 0x8000
-            static BS_BITMAP         := 0x0080
-            static DPI               := (A_ScreenDPI / 96)
+            WNDENUMPROC(hwnd, *)
+            {
+                static SM_CICON         := "W" SysGet(11) " H" SysGet(12)
+                static SM_CSMICON       := "W" SysGet(49) " H" SysGet(50)
+                static ICON_BIG         := 1
+                static ICON_SMALL       := 0
+                static WM_SETICON       := 0x80
+                static WS_CLIPCHILDREN  := 0x02000000
+                static WS_CLIPSIBLINGS  := 0x04000000
+                static WS_EX_COMPOSITED := 0x02000000
+                static WS_VSCROLL       := 0x00200000
+                static winAttrMap       := Map(2, 2, 4, 0, 10, true, 17, true, 20, true, 38, 2, 35, 0x2b2b2b) ; 34, 0xFFFFFFFE,
+
+                Critical()
+                SetWinDelay(-1)
+                SetControlDelay(-1)
+                DetectHiddenWindows(true)
+
+                if !WinExist("ahk_class #32770 ahk_id" hwnd)
+                    return 1
+
+                WinSetStyle("+" (WS_CLIPCHILDREN | WS_CLIPSIBLINGS))
+                WinSetExStyle("+" (WS_EX_COMPOSITED))
+                SetWindowTheme(hwnd, "DarkMode_Explorer")
+
+                if iconFile {
+                    hICON_SMALL := LoadPicture(iconFile, SM_CSMICON " Icon" iconNumber, &handleType)
+                    hICON_BIG   := LoadPicture(iconFile, SM_CICON " Icon" iconNumber, &handleType)
+                    PostMessage(WM_SETICON, ICON_SMALL, hICON_SMALL)
+                    PostMessage(WM_SETICON, ICON_BIG, hICON_BIG)
+                }
+
+                for dwAttribute, pvAttribute in winAttrMap
+                    DwmSetWindowAttribute(hwnd, dwAttribute, pvAttribute)
+
+                OnMessage(0x44, ON_WM_COMMNOTIFY, 0)
+                GWL_WNDPROC(hwnd, hICON_SMALL?, hICON_BIG?)
+                return 0
+            }
             
-            DetectHiddenWindows(true)
-            SetControlDelay(-1)
-            DllCall("SetThreadDpiAwarenessContext", "ptr", -4, "ptr")
+            GWL_WNDPROC(winId := "", hIcons*)
+            {
+                static SetWindowLong     := DllCall.Bind(A_PtrSize = 8 ? "SetWindowLongPtr" : "SetWindowLong", "ptr",, "int",, "ptr",, "ptr")
+                static BS_FLAT           := 0x8000
+                static BS_BITMAP         := 0x0080
+                static DPI               := (A_ScreenDPI / 96)
+                static WM_CLOSE          := 0x0010
+                static WM_CTLCOLORBTN    := 0x0135
+                static WM_CTLCOLORDLG    := 0x0136
+                static WM_CTLCOLORSTATIC := 0x0138
+                static WM_DESTROY        := 0x0002
+                static WM_SETREDRAW      := 0x000B
+                
+                DetectHiddenWindows(true)
+                SetControlDelay(-1)
+    
+                btns    := []
+                btnHwnd := hbrush1 := hbrush2 := ""
 
-            btnHwnd := ""
-            btns    := []
+                for ctrl in WinGetControlsHwnd(winId)
+                {
+                    SetWindowTheme(ctrl, "DarkMode_Explorer")
 
-            for ctrl in WinGetControlsHwnd(winId) {
-                SetWindowTheme(ctrl, "DarkMode_Explorer")
-                if InStr(ControlGetClassNN(ctrl), "Button") {
+                    if !InStr(ControlGetClassNN(ctrl), "B")
+                        continue
+                    
                     ControlSetStyle("+" (BS_FLAT | BS_BITMAP), ctrl)
                     btns.Push(btnHwnd := ctrl)
                 }
-            }
-
-            WindowProcNew := CallbackCreate(WNDPROC)
-            WindowProcOld := SetWindowLong(winId, -4, WindowProcNew)
-
-            hbrush1 := ""
-            hbrush2 := ""
-            
-            WNDPROC(hwnd, uMsg, wParam, lParam)
-            {
-                Critical()
-                DetectHiddenWindows(true)
-                SetControlDelay(-1)
-                
-                if !hbrush1 
-                    hbrush1 := CreateSolidBrush(0x202020)
-
-                if !hbrush2
-                    hbrush2 := CreateSolidBrush(0x2b2b2b)
-
-                switch uMsg {
-                case WM_CTLCOLORSTATIC: 
-                {
-                    SelectObject(wParam, hbrush2)
-                    SetBkMode(wParam, 0)
-                    SetTextColor(wParam, 0xFFFFFF)
-                    SetBkColor(wParam, 0x2b2b2b)
-
-                    for _hwnd in btns
-                        PostMessage(WM_SETREDRAW,,,_hwnd)
-
-                    GetClientRect(winId, rcW := RECT())
-                    GetClientRect(btnHwnd, rcBtn := RECT())
     
-                    btnHeight  := (rcBtn.Bottom - rcBtn.Top) / DPI
-                    rcW.Top    := rcW.Bottom - btnHeight
-                    rcW.Right  *= 3
-                    rcW.Bottom *= 3
-                    hdc        := GetWindowDC(winId)
-
-                    SetBkMode(hdc, 0)
-                    FillRect(hdc, rcW, hbrush1)
-                    ReleaseDC(winId, hdc)
-
-                    for _hwnd in btns
-                        PostMessage(WM_SETREDRAW, 1,,_hwnd)
-
-                    return hbrush2
-                }
-                case WM_CTLCOLORDLG: 
-                {         
-                    SelectObject(wParam, hbrush2)
-                    SetBkMode(wParam, 0)
-                    SetTextColor(wParam, 0xFFFFFF)
-                    SetBkColor(wParam, 0x2b2b2b)
-                    return hbrush2
-                }
-                case WM_CTLCOLORBTN: 
+                WindowProcOld := SetWindowLong(winId, -4, CallbackCreate(WNDPROC))
+                
+                WNDPROC(hwnd, uMsg, wParam, lParam)
                 {
-                    SelectObject(wParam, hbrush1)
-                    SetBkMode(wParam, 0)
-                    SetTextColor(wParam, 0xFFFFFF)
-                    SetBkColor(wParam, 0x202020)
-                    return hbrush2
+                    Critical(-1)
+                    DetectHiddenWindows(true)
+                    SetWinDelay(-1)
+                    SetControlDelay(-1)
+                    
+                    if !hbrush1 
+                        hbrush1 := CreateSolidBrush(0x202020)
+    
+                    if !hbrush2
+                        hbrush2 := CreateSolidBrush(0x2b2b2b)
+    
+                    switch uMsg {
+                    case WM_CTLCOLORSTATIC: 
+                    {
+                        SelectObject(wParam, hbrush2)
+                        SetBkMode(wParam, 0)
+                        SetTextColor(wParam, 0xFFFFFF)
+                        SetBkColor(wParam, 0x2b2b2b)
+    
+                        for _hwnd in btns
+                            PostMessage(WM_SETREDRAW,,,_hwnd)
+    
+                        GetClientRect(winId, rcW := RECT())
+                        GetClientRect(btnHwnd, rcBtn := RECT())
+        
+                        btnHeight  := (rcBtn.Bottom - rcBtn.Top) / DPI
+                        rcW.Top    := rcW.Bottom - btnHeight
+                        rcW.Right  *= 3
+                        rcW.Bottom *= 3
+                        hdc        := GetWindowDC(winId)
+    
+                        SetBkMode(hdc, 0)
+                        FillRect(hdc, rcW, hbrush1)
+                        ReleaseDC(winId, hdc)
+    
+                        for _hwnd in btns
+                            PostMessage(WM_SETREDRAW, 1,,_hwnd)
+    
+                        return hbrush2
+                    }
+                    case WM_CTLCOLORDLG: 
+                    {         
+                        SelectObject(wParam, hbrush2)
+                        SetBkMode(wParam, 0)
+                        SetTextColor(wParam, 0xFFFFFF)
+                        SetBkColor(wParam, 0x2b2b2b)
+                        return hbrush2
+                    }
+                    case WM_CTLCOLORBTN: 
+                    {
+                        SelectObject(wParam, hbrush1)
+                        SetBkMode(wParam, 0)
+                        SetTextColor(wParam, 0xFFFFFF)
+                        SetBkColor(wParam, 0x202020)
+                        return hbrush2
+                    }
+                    case WM_DESTROY: 
+                    {
+                        for v in [hbrush1, hbrush2]
+                            (v && DeleteObject(v))
+    
+                        for hIcon in hIcons
+                            (hIcon??0) && DestroyIcon(hIcon)
+                    }}
+    
+                    return CallWindowProc(WindowProcOld, hwnd, uMsg, wParam, lParam) 
                 }
-                case WM_CLOSE, WM_DESTROY: 
-                {
-                    for v in [hbrush1, hbrush2]
-                        if v
-                            DeleteObject(v)
-
-                    for hIcon in hIcons
-                        DllCall("DestroyIcon", "ptr", hIcon)
-                }}
-
-                return CallWindowProc(WindowProcOld, hwnd, uMsg, wParam, lParam) 
             }
         }
 
@@ -215,6 +216,8 @@ class __MsgBox
 
         CreateSolidBrush(crColor) => DllCall('Gdi32\CreateSolidBrush', 'uint', crColor, 'ptr')
         
+        DestroyIcon(hIcon) => DllCall("DestroyIcon", "ptr", hIcon)
+
         /** @see — https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute */
         DWMSetWindowAttribute(hwnd, dwAttribute, pvAttribute, cbAttribute := 4) => DllCall("Dwmapi\DwmSetWindowAttribute", "Ptr" , hwnd, "UInt", dwAttribute, "Ptr*", &pvAttribute, "UInt", cbAttribute)
         
@@ -240,6 +243,8 @@ class __MsgBox
         
         SetTextColor(hdc, crColor) => DllCall('Gdi32\SetTextColor', 'ptr', hdc, 'uint', crColor, 'uint')
         
+        SetThreadDpiAwarenessContext(dpiContext) => DllCall("SetThreadDpiAwarenessContext", "ptr", dpiContext, "ptr")
+
         SetWindowTheme(hwnd, pszSubAppName, pszSubIdList := "") => (!DllCall("uxtheme\SetWindowTheme", "ptr", hwnd, "ptr", StrPtr(pszSubAppName), "ptr", pszSubIdList ? StrPtr(pszSubIdList) : 0) ? true : false)
     }
 }
