@@ -12,35 +12,32 @@
 
 /*
 ; for v2.1.alpha.9 or later 
+class POINT {
+    x: i32, y: i32
+}
+
 class RECT  {
-    left  : i32
-    top   : i32
-    right : i32
-    bottom: i32
+    left: i32, top: i32, right: i32, bottom: i32
 }
 */
 
-; for v2.0 or later
-class RECT extends Buffer {
-    static ofst := Map("left", 0, "top", 4, "right", 8, "bottom", 12)
-
-    __New(left := 0, top := 0, right := 0, bottom := 0) {
-        super.__New(16)
-        NumPut("int", left, "int", top, "int", right, "int", bottom, this)
-    }
-
-    __Set(Key, Params, Value) {
-        if RECT.ofst.Has(k := StrLower(key))
-            NumPut("int", value, this, RECT.ofst[k])
-        else throw PropertyError
-    }
-
-    __Get(Key, Params) {
-        if RECT.ofst.Has(k := StrLower(key))
-            return NumGet(this, RECT.ofst[k], "int")
-        throw PropertyError
-    }
+; for v2.0 or later 
+POINT(x := 0, y := 0) {
+    NumPut("int", x, "int", y, buf := Buffer(8))
+    buf.DefineProp("x", {Get: NumGet.Bind(, 0, "int"), Set: IntPut.Bind(0)})
+    buf.DefineProp("y", {Get: NumGet.Bind(, 4, "int"), Set: IntPut.Bind(4)})
+    return buf
 }
+
+RECT(left := 0, top := 0, right := 0, bottom := 0){
+    static ofst := Map("left", 0, "top", 4, "right", 8, "bottom", 12)
+    NumPut("int", left, "int", top, "int", right, "int", bottom, buf := Buffer(16))
+    for k, v in ofst
+        buf.DefineProp(k, {Get: NumGet.Bind(, v, "int"), Set: IntPut.Bind(v)})
+    return buf
+}
+
+IntPut(ofst, _, v) => NumPut("int", v, _, ofst)
 
 class __MsgBox
 {
@@ -163,17 +160,21 @@ class __MsgBox
                         for _hwnd in btns
                             PostMessage(WM_SETREDRAW,,,_hwnd)
     
-                        GetClientRect(winId, rcW := RECT())
-                        GetClientRect(btnHwnd, rcBtn := RECT())
-        
-                        btnHeight  := (rcBtn.Bottom - rcBtn.Top) / DPI
-                        rcW.Top    := rcW.Bottom - btnHeight
-                        rcW.Right  *= 3
-                        rcW.Bottom *= 3
+                        GetWindowRect(winId, rcW := RECT())
+                        GetClientRect(winId, rcC := RECT())
+                        GetWindowRect(btnHwnd, rcBtn := RECT())
+                        
+                        pt   := POINT()
+                        pt.y := rcW.bottom - rcBtn.bottom
+                        ScreenToClient(winId, pt)
+
                         hdc        := GetWindowDC(winId)
-    
+                        rcC.top    := rcBtn.top + pt.y -2
+                        rcC.bottom *= 2
+                        rcC.right  *= 2
+                        
                         SetBkMode(hdc, 0)
-                        FillRect(hdc, rcW, hbrush1)
+                        FillRect(hdc, rcC, hbrush1)
                         ReleaseDC(winId, hdc)
     
                         for _hwnd in btns
@@ -213,6 +214,8 @@ class __MsgBox
 
         CallWindowProc(lpPrevWndFunc, hWnd, uMsg, wParam, lParam) => DllCall("CallWindowProc", "Ptr", lpPrevWndFunc, "Ptr", hwnd, "UInt", uMsg, "Ptr", wParam, "Ptr", lParam)
 
+        ClientToScreen(hWnd, lpPoint) => DllCall("User32\ClientToScreen", "ptr", hWnd, "ptr", lpPoint, "int")
+
         CreateSolidBrush(crColor) => DllCall('Gdi32\CreateSolidBrush', 'uint', crColor, 'ptr')
         
         DestroyIcon(hIcon) => DllCall("DestroyIcon", "ptr", hIcon)
@@ -232,8 +235,16 @@ class __MsgBox
         
         GetWindowDC(hwnd) => DllCall("User32\GetWindowDC", "ptr", hwnd, "ptr")
         
+        GetWindowRect(hWnd, lpRect) => DllCall("User32\GetWindowRect", "ptr", hWnd, "ptr", lpRect, "uptr")
+
+        GetWindowRgn(hWnd, hRgn) => DllCall("User32\GetWindowRgn", "ptr", hWnd, "ptr", hRgn, "int")
+
+        GetWindowRgnBox(hWnd, hRgn) => DllCall("User32\GetWindowRgnBox", "ptr", hWnd, "ptr", hRgn, "int")
+
         ReleaseDC(hWnd, hDC) => DllCall("User32\ReleaseDC", "ptr", hWnd, "ptr", hDC, "int")
         
+        ScreenToClient(hWnd, lpPoint) => DllCall("User32\ScreenToClient", "ptr", hWnd, "ptr", lpPoint, "int")
+
         SelectObject(hdc, hgdiobj) => DllCall('Gdi32\SelectObject', 'ptr', hdc, 'ptr', hgdiobj, 'ptr')
         
         SetBkColor(hdc, crColor) => DllCall('Gdi32\SetBkColor', 'ptr', hdc, 'uint', crColor, 'uint')
