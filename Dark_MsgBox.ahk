@@ -1,10 +1,10 @@
 /************************************************************************
- * @description Apply dark theme to the built-in MsgBox.
- * @file Dark_MsgBox.ahk
+ * @description Apply dark theme to the built-in MsgBox and InputBox.
+ * @file Dark_MsgBox_v2.ahk
  * @link https://gist.github.com/nperovic/0b9a511eda773f9304813a6ad9eec137
  * @author Nikola Perovic
- * @date 2024/04/20
- * @version 1.0.1
+ * @date 2024/04/22
+ * @version 1.1.0
  ***********************************************************************/
 
 #Requires AutoHotkey v2.1-alpha.9
@@ -43,24 +43,48 @@ class __MsgBox
 {
     static __New()
     {
-          /** Thanks to geekdude & Mr Doge for providing this method to rewrite built-in functions. */
-        static nativeMsgbox := MsgBox.Call.Bind(MsgBox)
-        MsgBox.DefineProp("Call", {Call: MsgBoxEx})
+        /** Thanks to geekdude & Mr Doge for providing this method to rewrite built-in functions. */
+        static nativeMsgbox   := MsgBox.Call.Bind(MsgBox)
+        static nativeInputBox := InputBox.Call.Bind(InputBox)
         
-        MsgBoxEx(_this, text?, title?, options?, iconFile := "", iconNumber := 1)
+        MsgBox.DefineProp("Call", {Call: BoxEx})
+        InputBox.DefineProp("Call", {Call: BoxEx})
+
+        BoxEx(_this, params*)
         {
             static WM_COMMNOTIFY := 0x44
+            static WM_INITDIALOG := 0x0110
+            
+            iconNumber := 1
+            iconFile   := ""
+            
+            if (params.length = (_this.MaxParams + 2))
+                iconNumber := params.Pop()
+            
+            if (params.length = (_this.MaxParams + 1)) 
+                iconFile := params.Pop()
             
             SetThreadDpiAwarenessContext(-4)
-            OnMessage(WM_COMMNOTIFY, ON_WM_COMMNOTIFY, -1)
 
-            return nativeMsgbox(text?, title?, options?)
+            if (_this.Name = "MsgBox")
+                OnMessage(WM_COMMNOTIFY, ON_WM_COMMNOTIFY, -1)
+            else
+                OnMessage(WM_INITDIALOG, ON_WM_INITDIALOG, -1)
+
+            return native%_this.Name%(params*)
+
+            ON_WM_INITDIALOG(wParam, lParam, msg, hwnd)
+            {
+                OnMessage(WM_INITDIALOG, ON_WM_INITDIALOG, 0)
+                WNDENUMPROC(hwnd)
+            }
             
             ON_WM_COMMNOTIFY(wParam, lParam, msg, hwnd)
             {
                 DetectHiddenWindows(true)
 
                 if (msg = 68 && wParam = 1027)
+                    OnMessage(0x44, ON_WM_COMMNOTIFY, 0),                    
                     EnumThreadWindows(GetCurrentThreadId(), CallbackCreate(WNDENUMPROC), 0)
             }
 
@@ -98,8 +122,7 @@ class __MsgBox
 
                 for dwAttribute, pvAttribute in winAttrMap
                     DwmSetWindowAttribute(hwnd, dwAttribute, pvAttribute)
-
-                OnMessage(0x44, ON_WM_COMMNOTIFY, 0)
+                
                 GWL_WNDPROC(hwnd, hICON_SMALL?, hICON_BIG?)
                 return 0
             }
@@ -113,10 +136,11 @@ class __MsgBox
                 static WM_CLOSE          := 0x0010
                 static WM_CTLCOLORBTN    := 0x0135
                 static WM_CTLCOLORDLG    := 0x0136
+                static WM_CTLCOLOREDIT   := 0x0133
                 static WM_CTLCOLORSTATIC := 0x0138
                 static WM_DESTROY        := 0x0002
                 static WM_SETREDRAW      := 0x000B
-                
+
                 DetectHiddenWindows(true)
                 SetControlDelay(-1)
     
@@ -125,9 +149,10 @@ class __MsgBox
 
                 for ctrl in WinGetControlsHwnd(winId)
                 {
-                    SetWindowTheme(ctrl, "DarkMode_Explorer")
+                    classNN := ControlGetClassNN(ctrl)
+                    SetWindowTheme(ctrl, !InStr(classNN, "Edit") ? "DarkMode_Explorer" : "DarkMode_CFD")
 
-                    if !InStr(ControlGetClassNN(ctrl), "B")
+                    if !InStr(classNN, "B")
                         continue
                     
                     ControlSetStyle("+" (BS_FLAT | BS_BITMAP), ctrl)
@@ -163,7 +188,7 @@ class __MsgBox
                         GetWindowRect(winId, rcW := RECT())
                         GetClientRect(winId, rcC := RECT())
                         GetWindowRect(btnHwnd, rcBtn := RECT())
-                        
+
                         pt   := POINT()
                         pt.y := rcW.bottom - rcBtn.bottom
                         ScreenToClient(winId, pt)
@@ -182,7 +207,7 @@ class __MsgBox
     
                         return hbrush2
                     }
-                    case WM_CTLCOLORDLG: 
+                    case WM_CTLCOLORDLG, WM_CTLCOLOREDIT: 
                     {         
                         SelectObject(wParam, hbrush2)
                         SetBkMode(wParam, 0)
@@ -203,8 +228,8 @@ class __MsgBox
                         for v in [hbrush1, hbrush2]
                             (v && DeleteObject(v))
     
-                        for hIcon in hIcons
-                            (hIcon??0) && DestroyIcon(hIcon)
+                        for v in hIcons
+                            (v??0) && DestroyIcon(v)
                     }}
     
                     return CallWindowProc(WindowProcOld, hwnd, uMsg, wParam, lParam) 
