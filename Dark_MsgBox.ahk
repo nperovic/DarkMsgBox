@@ -1,9 +1,9 @@
-/************************************************************************
- * @description Apply dark theme to the built-in MsgBox.
+﻿/************************************************************************
+ * @description Apply dark theme to the built-in MsgBox and InputBox. (This is for 2.1-alpha users)
  * @file Dark_MsgBox.ahk
- * @link https://gist.github.com/nperovic/0b9a511eda773f9304813a6ad9eec137
+ * @link https://github.com/nperovic/DarkMsgBox/tree/alpha
  * @author Nikola Perovic
- * @date 2024/06/09
+ * @date 2024/06/16
  * @version 1.1.0
  ***********************************************************************/
 #Requires AutoHotkey v2.1-alpha.13
