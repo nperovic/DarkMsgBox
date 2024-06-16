@@ -7,14 +7,14 @@
  * @version 1.1.0
  ***********************************************************************/
 #Requires AutoHotkey v2.1-alpha.13
-#Module Dark_MsgBox
+; #Module Dark_MsgBox
 Import AHK
 
 #DllLoad gdi32.dll
 
-/**
+ /**
  * Display the specified text in a small window containing one or more buttons (such as'Yes' and'No').
- * @param Options indicates the type of message box and possible button combinations. If it is empty or omitted, the default is 0. Please refer to the table below for the allowed values. In addition, you can specify zero or more of the following options:
+ * @param Options indicates the type of message box and possible button combinations. If it is empty or omitted, the default is 0. Please refer to the table below for the allowed values. In addition, you can specify zero or more of the following options: 
  * 
  * Owner: To specify the owner window for the message box, use the word Owner followed by HWND (window ID).
  * 
@@ -59,12 +59,12 @@ Import AHK
  * 0x80000 Let the text be displayed right-aligned.
  * 
  * 0x100000 is used for Hebrew/Arabic right-to-left reading order.
- * @returns When called from an expression, MsgBox returns one of the following strings to indicate which button the user pressed:
+ * @returns When called from an expression, MsgBox returns one of the following strings to indicate which button the user pressed: 
  * OK, Cancel, Yes, No, Abort, Retry, Ignore, TryAgain, Continue, Timeout
  */
 MsgBox(Text?, Title?, Options?, IconPath?) => DarkMsgBox(AHK.MsgBox, Text?, Title?, Options?, IconPath?)
 
-/**
+ /**
  * Display an input box, asking the user to enter a string.
  * @param Options is a case-insensitive string option, and each option is separated from the last option with a space or tab.
  * 
@@ -78,14 +78,15 @@ MsgBox(Text?, Title?, Options?, IconPath?) => DarkMsgBox(AHK.MsgBox, Text?, Titl
  */
 InputBox(Prompt?, Title?, Options?, Default?) => DarkMsgBox(AHK.InputBox, Prompt?, Title?, Options?, Default?)
 
-export default class DarkMsgBox
+class DarkMsgBox
 {
     ; for v2.1.alpha.9 or later
     class RECT  {
         left: i32, top: i32, right: i32, bottom: i32
     }
 
-    static Call(_this, params*) {
+    static Call(_this, params*)
+    {
         static WM_COMMNOTIFY := 0x44
         static WM_INITDIALOG := 0x0110
         
@@ -115,8 +116,6 @@ export default class DarkMsgBox
         
         ON_WM_COMMNOTIFY(wParam, lParam, msg, hwnd)
         {
-            DetectHiddenWindows(true)
-
             if (msg = 68 && wParam = 1027)
                 OnMessage(0x44, ON_WM_COMMNOTIFY, 0),                    
                 EnumThreadWindows(GetCurrentThreadId(), CallbackCreate(WNDENUMPROC), 0)
@@ -132,8 +131,7 @@ export default class DarkMsgBox
             static WS_CLIPCHILDREN  := 0x02000000
             static WS_CLIPSIBLINGS  := 0x04000000
             static WS_EX_COMPOSITED := 0x02000000
-            static WS_VSCROLL       := 0x00200000
-            static winAttrMap       := Map(2, 2, 4, 0, 10, true, 17, true, 20, true, 38, 4, 35, 0x2b2b2b) 
+            static winAttrMap       := Map(10, true, 17, true, 20, true, 38, 4, 35, 0x2b2b2b)
 
             SetWinDelay(-1)
             SetControlDelay(-1)
@@ -142,7 +140,7 @@ export default class DarkMsgBox
             if !WinExist("ahk_class #32770 ahk_id" hwnd)
                 return 1
 
-            WinSetStyle("+" (WS_CLIPCHILDREN | WS_CLIPSIBLINGS))
+            WinSetStyle("+" (WS_CLIPSIBLINGS | WS_CLIPCHILDREN))
             WinSetExStyle("+" (WS_EX_COMPOSITED))
             SetWindowTheme(hwnd, "DarkMode_Explorer")
 
@@ -174,7 +172,6 @@ export default class DarkMsgBox
             static WM_DESTROY        := 0x0002
             static WM_SETREDRAW      := 0x000B
 
-            DetectHiddenWindows(true)
             SetControlDelay(-1)
 
             btns    := []
@@ -185,31 +182,35 @@ export default class DarkMsgBox
                 classNN := ControlGetClassNN(ctrl)
                 SetWindowTheme(ctrl, !InStr(classNN, "Edit") ? "DarkMode_Explorer" : "DarkMode_CFD")
 
-                if !InStr(classNN, "B")
-                    continue
-                
-                btns.Push(btnHwnd := ctrl)
+                if InStr(classNN, "B") 
+                    btns.Push(btnHwnd := ctrl)
             }
 
             WindowProcOld := SetWindowLong(winId, -4, CallbackCreate(WNDPROC))
             
             WNDPROC(hwnd, uMsg, wParam, lParam)
             {
+                static hbrush := []
                 SetWinDelay(-1)
                 SetControlDelay(-1)
                 
+                if !hbrush.Length
+                    for clr in [0x202020, 0x2b2b2b]
+                        hbrush.Push(CreateSolidBrush(clr))
+
                 switch uMsg {
                 case WM_CTLCOLORSTATIC: 
                 {
-                    hbrush := SelectObject(wParam, GetStockObject(18))
-                    SetDCBrushColor(wParam, 0x2b2b2b)
+                    SelectObject(wParam, hbrush[2])
                     SetBkMode(wParam, 0)
                     SetTextColor(wParam, 0xFFFFFF)
-    
+                    SetBkColor(wParam, 0x2b2b2b)
+
                     for _hwnd in btns
                         PostMessage(WM_SETREDRAW,,,_hwnd)
 
                     GetClientRect(winId, rcC := this.RECT())
+                    WinGetClientPos(&winX, &winY, &winW, &winH, winId)
                     ControlGetPos(, &btnY,, &btnH, btnHwnd)
                     hdc        := GetDC(winId)
                     rcC.top    := btnY - (rcC.bottom - (btnY+btnH))
@@ -217,39 +218,43 @@ export default class DarkMsgBox
                     rcC.right  *= 2
                     
                     SetBkMode(hdc, 0)
-                    SelectObject(hdc, hbrush := GetStockObject(18))
-                    SetDCBrushColor(hdc, 0x202020)
-                    FillRect(hdc, rcC, hbrush)
+                    FillRect(hdc, rcC, hbrush[1])
                     ReleaseDC(winId, hdc)
 
                     for _hwnd in btns
                         PostMessage(WM_SETREDRAW, 1,,_hwnd)
 
-                    return hbrush 
+                    return hbrush[2]
                 }
                 case WM_CTLCOLORBTN, WM_CTLCOLORDLG, WM_CTLCOLOREDIT: 
                 {         
-                    SelectObject(wParam, hbrush := GetStockObject(18))
-                    SetDCBrushColor(wParam, 0x2b2b2b)
+                    brushIndex := !(uMsg = WM_CTLCOLORBTN)
+                    SelectObject(wParam, brush := hbrush[!(uMsg = WM_CTLCOLORBTN)+1])
                     SetBkMode(wParam, 0)
                     SetTextColor(wParam, 0xFFFFFF)
-                    return hbrush 
+                    ; SetBkColor(wParam, !brushIndex ? 0x202020 : 0x2b2b2b)
+                    return brush
                 }
                 case WM_DESTROY: 
                 {
                     for v in hIcons
                         (v??0) && DestroyIcon(v)
+
+                    while hbrush.Length
+                        DeleteObject(hbrush.Pop())
                 }}
 
                 return CallWindowProc(WindowProcOld, hwnd, uMsg, wParam, lParam) 
             }
         }
+
+        CreateSolidBrush(crColor) => DllCall('Gdi32\CreateSolidBrush', 'uint', crColor, 'ptr')
         
         CallWindowProc(lpPrevWndFunc, hWnd, uMsg, wParam, lParam) => DllCall("CallWindowProc", "Ptr", lpPrevWndFunc, "Ptr", hwnd, "UInt", uMsg, "Ptr", wParam, "Ptr", lParam)
 
         DestroyIcon(hIcon) => DllCall("DestroyIcon", "ptr", hIcon)
 
-        /** @see — https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute */
+         /** @see — https://learn.microsoft.com/en-us/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute */
         DWMSetWindowAttribute(hwnd, dwAttribute, pvAttribute, cbAttribute := 4) => DllCall("Dwmapi\DwmSetWindowAttribute", "Ptr" , hwnd, "UInt", dwAttribute, "Ptr*", &pvAttribute, "UInt", cbAttribute)
         
         DeleteObject(hObject) => DllCall('Gdi32\DeleteObject', 'ptr', hObject, 'int')
@@ -264,10 +269,6 @@ export default class DarkMsgBox
         
         GetDC(hwnd := 0) => DllCall("GetDC", "ptr", hwnd, "ptr")
 
-        GetStockObject(fnObject) => DllCall('Gdi32\GetStockObject', 'int', fnObject, 'ptr')
-
-        GetWindowRect(hWnd, lpRect) => DllCall("User32\GetWindowRect", "ptr", hWnd, "ptr", lpRect, "uptr")
-
         ReleaseDC(hWnd, hDC) => DllCall("User32\ReleaseDC", "ptr", hWnd, "ptr", hDC, "int")
         
         SelectObject(hdc, hgdiobj) => DllCall('Gdi32\SelectObject', 'ptr', hdc, 'ptr', hgdiobj, 'ptr')
@@ -275,8 +276,6 @@ export default class DarkMsgBox
         SetBkColor(hdc, crColor) => DllCall('Gdi32\SetBkColor', 'ptr', hdc, 'uint', crColor, 'uint')
         
         SetBkMode(hdc, iBkMode) => DllCall('Gdi32\SetBkMode', 'ptr', hdc, 'int', iBkMode, 'int')
-        
-        SetDCBrushColor(hdc, crColor) => DllCall('Gdi32\SetDCBrushColor', 'ptr', hdc, 'uint', crColor, 'uint')
 
         SetTextColor(hdc, crColor) => DllCall('Gdi32\SetTextColor', 'ptr', hdc, 'uint', crColor, 'uint')
         
@@ -287,6 +286,8 @@ export default class DarkMsgBox
 }
 
 ; Example: 
-; ipb := InputBox("Enter something here`nAnd here.", "InputBox Title")
-; MsgBox(ipb.value, "Your Input", "0x6")
-; ExitApp()
+if (A_LineFile = A_ScriptFullPath && !A_IsCompiled) {
+    ipb := InputBox("Enter something here`nAnd here.", "InputBox Title")
+    MsgBox(ipb.value, "Your Input", "0x36")
+    ExitApp()
+}
